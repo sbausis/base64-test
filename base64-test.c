@@ -134,11 +134,17 @@ int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCoun
 				ulCurr |= *apbySrc++;    // zeichen aufnehmen, sonst mit Nullen befüllen
 			}
 			ulCurr <<= 8;
+			if (PRINT_DEBUG) printf("iulCurr - %08lx ...\n", ulCurr);
 		}
 		for (int k = 0; k < iLen2; k++) {
 			unsigned char b = (unsigned char)((ulCurr >> 26)&0x3F);
-			*apsDest++ = gpsBase64EncodingTable[b];
+			unsigned char c = gpsBase64EncodingTable[b];
+			if (PRINT_DEBUG) printf("in - %i => 0x%02x => '%c' ...\n", b, b, b);
+			if (PRINT_DEBUG) printf("out - %i => 0x%02x => '%c' ...\n", c, c, c);
+			*apsDest++ = c;
+			if (PRINT_DEBUG) printf("oulCurr - %08lx ...\n", ulCurr);
 			ulCurr <<= 6;
+			if (PRINT_DEBUG) printf("oulCurr - %08lx ...\n", ulCurr);
 		}
 		
 		iWritten += iLen2;
@@ -147,6 +153,7 @@ int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCoun
 			iLen3 = iLen2 ? 4 - iLen2 : 0;
 			for (int j = 0; j < iLen3; j++) {
 				*apsDest++ = '=';
+				if (PRINT_DEBUG) printf("padding - = ...\n");
 			}
 			iWritten += iLen3;
 		}
@@ -156,6 +163,7 @@ int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCoun
 	return 1;
 }
 
+// original
 int Encode2(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCount, int aiEncodeFlags) {
 	
 	if (!apbySrc) {
@@ -312,15 +320,19 @@ int Decode(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLe
 			if (apsSrc >= psSrcEnd) {
 				break;
 			}
+			if (PRINT_DEBUG) printf("in - %02x ...\n", *apsSrc);
 			int iCh = DecodeChar(*apsSrc);
+			if (PRINT_DEBUG) printf("out - %02x ...\n", iCh);
 			apsSrc++;
 			if (iCh == -1) {
 				// skip this char
 				i--;
+				if (PRINT_DEBUG) printf("skip ...\n");
 				continue;
 			}
 			ulCurr <<= 6;
 			ulCurr |= (iCh&0x3F);
+			if (PRINT_DEBUG) printf("oulCurr - %08lx ...\n", ulCurr);
 			iBits += 6;
 		}
 		
@@ -332,12 +344,14 @@ int Decode(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLe
 		// left to right
 		ulCurr <<= 24 - iBits;
 		for (i = 0; i < iBits / 8; i++) {
+			if (PRINT_DEBUG) printf("oulCurr - %08lx ...\n", ulCurr);
 			if (!bOverflow) {
-				if (PRINT_DEBUG) printf("0x%02x\n", (char)((ulCurr & 0x00ff0000) >> 16));
+				if (PRINT_DEBUG) printf("save 0x%02x\n", (char)((ulCurr & 0x00ff0000) >> 16));
 				*apbyDest = (char)((ulCurr & 0x00ff0000) >> 16);
 				apbyDest++;
 			}
 			ulCurr <<= 8;
+			if (PRINT_DEBUG) printf("oulCurr - %08lx ...\n", ulCurr);
 			iWritten++;
 		}
 	}
@@ -355,6 +369,7 @@ int Decode(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLe
 	return 1;
 }
 
+// original
 int Decode2(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLen) {
 	// walk the source buffer
 	// each four character sequence is converted to 3 bytes
@@ -401,6 +416,72 @@ int Decode2(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestL
 			if (!bOverflow) {
 				if (PRINT_DEBUG) printf("0x%02x\n", (char)((ulCurr & 0x00ff0000) >> 16));
 				*apbyDest = (char)((ulCurr & 0x00ff0000) >> 16);
+				apbyDest++;
+			}
+			ulCurr <<= 8;
+			iWritten++;
+		}
+	}
+	
+	*apiDestLen = iWritten;
+	
+	if (bOverflow) {
+		if (apbyDest) {
+			return -1;
+		}
+		
+		return 0;
+	}
+	
+	return 1;
+}
+
+int Decode3(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLen) {
+	// walk the source buffer
+	// each four character sequence is converted to 3 bytes
+	// CRLFs and =, and any characters not in the encoding table
+	// are skiped
+	
+	if (!apsSrc || !apiDestLen) {
+		return 0;
+	}
+	
+	const char* psSrcEnd = apsSrc + aiSrcMaxCount;
+	int iWritten = 0;
+	
+	int bOverflow = (apbyDest == NULL) ? 1 : 0;
+	
+	while (apsSrc < psSrcEnd) {
+		unsigned long ulCurr = 0;
+		int i;
+		int iBits = 0;
+		for (i = 0; i < 4; i++) {
+			if (apsSrc >= psSrcEnd) {
+				break;
+			}
+			int iCh = DecodeChar(*apsSrc);
+			apsSrc++;
+			if (iCh == -1) {
+				// skip this char
+				i--;
+				continue;
+			}
+			ulCurr <<= 6;
+			ulCurr |= (iCh&0x3F);
+			iBits += 6;
+		}
+		
+		if (!bOverflow && iWritten + (iBits / 8) > (*apiDestLen)) {
+		       bOverflow = 1;
+		}
+		
+		// dwCurr has the 3 bytes to write to the output buffer
+		// left to right
+		ulCurr <<= 24 - iBits;
+		for (i = 0; i < iBits / 8; i++) {
+			if (!bOverflow) {
+				if (PRINT_DEBUG) printf("0x%02x\n", (char)((ulCurr & 0x003f0000) >> 16));
+				*apbyDest = (char)((ulCurr & 0x003f0000) >> 16);
 				apbyDest++;
 			}
 			ulCurr <<= 8;
@@ -534,6 +615,31 @@ void test_decode_string2(const char* string, int len) {
 	return;
 }
 
+void test_decode_string3(const char* string, int len) {
+	
+	printf(" -> decode : [%d]:\"%s\" => ", len, string);
+	
+	int decoded_string_length = (len*3/4);
+	char decoded_string[decoded_string_length + 1];
+	
+	int ret = Decode3(string, len, decoded_string, &decoded_string_length);
+	if (ret==0){
+		printf("failed encoding ...\n");
+		//return;
+	}
+	
+	decoded_string[decoded_string_length] = '\0';
+	printf("[%d]:\"%s\"\n", decoded_string_length, decoded_string);
+	
+	printf("           : ");
+	test_hex_print(string, len);
+	printf(" => ");
+	test_hex_print(decoded_string, decoded_string_length);
+	printf("\n\n");
+	
+	return;
+}
+
 //##############################################################################
 
 int main (int argc, char *argv[]) {
@@ -623,6 +729,21 @@ int main (int argc, char *argv[]) {
 		printf("\n");
 		
 	}
+	else if (argc>1 && strcmp(argv[1], "d2")==0) {
+		
+		printf("\n");
+		printf("################################################################################\n");
+		printf("DECODING - test string - output should be \"abcde\" ...\n");
+		printf("\n");
+		
+		test_decode_string("YWI=\0", 4);
+		printf("\n");
+		test_decode_string("YWx\0", 4);
+		
+		printf("################################################################################\n");
+		printf("\n");
+		
+	}
 	else if (argc>1 && strcmp(argv[1], "T")==0) {
 		
 		printf("\n");
@@ -695,6 +816,22 @@ int main (int argc, char *argv[]) {
 		printf("\n");
 	
 	}
+	else if (argc>1 && strcmp(argv[1], "T4")==0) {
+	
+		printf("\n");
+		printf("################################################################################\n");
+		printf("Some Tests4 ...\n");
+		printf("\n");
+		
+		test_decode_string("4f7ecbK6Zhzbj3VZbEwyXl\0", 22);
+		test_decode_string2("4f7ecbK6Zhzbj3VZbEwyXl\0", 22);
+		test_decode_string3("4f7ecbK6Zhzbj3VZbEwyXl\0", 22);
+	
+		printf("################################################################################\n");
+		printf("\n");
+	
+	}
+	
 	else if (argc>1 && strcmp(argv[1], "t")==0) {
 		
 		printf("\n");
