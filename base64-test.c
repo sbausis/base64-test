@@ -156,6 +156,111 @@ int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCoun
 	return 1;
 }
 
+int Encode2(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCount, int aiEncodeFlags) {
+	
+	if (!apbySrc) {
+		if (PRINT_DEBUG) printf("no Input ...\n");
+		return 0;
+	}
+	
+	if (!apsDest) {
+		if (PRINT_DEBUG) printf("no Output ...\n");
+		return 0;
+	}
+	
+	if (!apiDestMaxCount) {
+		if (PRINT_DEBUG) printf("no Output count ...\n");
+		return 0;
+	}
+	
+	int requiredLength = GetRequiredEncodeLength(aiSrcLen, aiEncodeFlags);
+	if (*apiDestMaxCount < requiredLength) {
+		if (PRINT_DEBUG) printf("output to short - %d < %d ...\n", *apiDestMaxCount, requiredLength);
+		return 0;
+	}
+	if (PRINT_DEBUG) printf("input length %d ...\n", aiSrcLen);
+	if (PRINT_DEBUG) printf("output length %d ...\n", requiredLength);
+	
+	int iWritten = 0;
+	int iLen1           = (aiSrcLen / 3) * 4;      // Stream wird um 33% laenger
+	int iLen2           = iLen1 / 76;              // Keine Zeile mit mehr als 76 Zeichen
+	int iLen3           = 19;                      // aus 19 Bytes werden 19*4 Bytes ->> eine Zeile mit 76 Zeichen
+	
+	if (PRINT_DEBUG) printf("len1 - %d ...\n", iLen1);
+	if (PRINT_DEBUG) printf("len2 - %d ...\n", iLen2);
+	if (PRINT_DEBUG) printf("len3 - %d ...\n", iLen3);
+	
+	for (int i = 0; i <= iLen2; i++) {
+		if (i == iLen2) {
+			iLen3 = (iLen1 % 76) / 4;
+			if (PRINT_DEBUG) printf("len3 - %d ...\n", iLen3);
+		}
+		
+		for (int j = 0; j < iLen3; j++) {
+			unsigned long ulCurr = 0;
+			for (int n = 0; n < 3; n++) {
+				ulCurr |= *apbySrc++;
+				ulCurr <<= 8;
+				if (PRINT_DEBUG) printf("iulCurr - %08lx ...\n", ulCurr);
+			}
+			for (int k = 0; k < 4; k++) {	
+				unsigned char b = (unsigned char)(ulCurr >> 26);
+				unsigned char c = gpsBase64EncodingTable[b];
+				if (PRINT_DEBUG) printf("in - %i => 0x%02x => '%c' ...\n", b, b, b);
+				if (PRINT_DEBUG) printf("out - %i => 0x%02x => '%c' ...\n", c, c, c);
+				*apsDest++ = c;
+				if (PRINT_DEBUG) printf("oulCurr - %08lx ...\n", ulCurr);
+				ulCurr <<= 6;
+				if (PRINT_DEBUG) printf("oulCurr - %08lx ...\n", ulCurr);
+			}
+		}
+		
+		iWritten += iLen3 * 4;
+		
+		if ((aiEncodeFlags & DT_BASE64_FLAG_NOCRLF) == 0)     // 76 Zeichen für eine Zeile, also "\r\n"
+		{
+			*apsDest++ = '\r';
+			*apsDest++ = '\n';
+			iWritten += 2;
+		}
+	}
+	
+	if (iWritten && (aiEncodeFlags & DT_BASE64_FLAG_NOCRLF) == 0) {
+		apsDest -= 2;
+		iWritten -= 2;
+	}
+	
+	iLen2 = aiSrcLen % 3 ? aiSrcLen % 3 + 1 : 0;   // Ist noch etwas übrig?
+	if (iLen2) {
+		unsigned long ulCurr = 0;
+		for (int n = 0; n < 3; n++) {
+			if (n < (aiSrcLen % 3))                               // wenn noch zeichen vorhanden
+			{
+				ulCurr |= *apbySrc++;    // zeichen aufnehmen, sonst mit Nullen befüllen
+			}
+			ulCurr <<= 8;
+		}
+		for (int k = 0; k < iLen2; k++) {
+			unsigned char b = (unsigned char)(ulCurr >> 26);
+			*apsDest++ = gpsBase64EncodingTable[b];
+			ulCurr <<= 6;
+		}
+		
+		iWritten += iLen2;
+		if ((aiEncodeFlags & DT_BASE64_FLAG_NOPAD) == 0) // Endmarkierung
+		{
+			iLen3 = iLen2 ? 4 - iLen2 : 0;
+			for (int j = 0; j < iLen3; j++) {
+				*apsDest++ = '=';
+			}
+			iWritten += iLen3;
+		}
+	}
+	
+	*apiDestMaxCount = iWritten;
+	return 1;
+}
+
 //##############################################################################
 
 int DecodeChar(unsigned int auiChar) {
@@ -250,6 +355,72 @@ int Decode(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLe
 	return 1;
 }
 
+int Decode2(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLen) {
+	// walk the source buffer
+	// each four character sequence is converted to 3 bytes
+	// CRLFs and =, and any characters not in the encoding table
+	// are skiped
+	
+	if (!apsSrc || !apiDestLen) {
+		return 0;
+	}
+	
+	const char* psSrcEnd = apsSrc + aiSrcMaxCount;
+	int iWritten = 0;
+	
+	int bOverflow = (apbyDest == NULL) ? 1 : 0;
+	
+	while (apsSrc < psSrcEnd) {
+		unsigned long ulCurr = 0;
+		int i;
+		int iBits = 0;
+		for (i = 0; i < 4; i++) {
+			if (apsSrc >= psSrcEnd) {
+				break;
+			}
+			int iCh = DecodeChar(*apsSrc);
+			apsSrc++;
+			if (iCh == -1) {
+				// skip this char
+				i--;
+				continue;
+			}
+			ulCurr <<= 6;
+			ulCurr |= iCh;
+			iBits += 6;
+		}
+		
+		if (!bOverflow && iWritten + (iBits / 8) > (*apiDestLen)) {
+		       bOverflow = 1;
+		}
+		
+		// dwCurr has the 3 bytes to write to the output buffer
+		// left to right
+		ulCurr <<= 24 - iBits;
+		for (i = 0; i < iBits / 8; i++) {
+			if (!bOverflow) {
+				if (PRINT_DEBUG) printf("0x%02x\n", (char)((ulCurr & 0x00ff0000) >> 16));
+				*apbyDest = (char)((ulCurr & 0x00ff0000) >> 16);
+				apbyDest++;
+			}
+			ulCurr <<= 8;
+			iWritten++;
+		}
+	}
+	
+	*apiDestLen = iWritten;
+	
+	if (bOverflow) {
+		if (apbyDest) {
+			return -1;
+		}
+		
+		return 0;
+	}
+	
+	return 1;
+}
+
 //##############################################################################
 
 void test_hex_print(const char* string, int len) {
@@ -286,6 +457,33 @@ void test_encode_string(const char* string, int len) {
 	return;
 }
 
+void test_encode_string2(const char* string, int len) {
+	
+	printf(" -> encode : [%d]:\"%s\" => ", len, string);
+	
+	int flags = DT_BASE64_FLAG_NONE;
+	
+	int encoded_string_length = GetRequiredEncodeLength(len, flags);
+	char encoded_string[encoded_string_length + 1];
+	
+	int ret = Encode2(string, len, encoded_string, &encoded_string_length, flags);
+	if (ret==0){
+		printf("failed encoding ...\n");
+		return;
+	}
+	
+	encoded_string[encoded_string_length] = '\0';
+	printf("[%d]:\"%s\"\n", encoded_string_length, encoded_string);
+	
+	printf("           : ");
+	test_hex_print(string, len);
+	printf(" => ");
+	test_hex_print(encoded_string, encoded_string_length);
+	printf("\n\n");
+	
+	return;
+}
+
 void test_decode_string(const char* string, int len) {
 	
 	printf(" -> decode : [%d]:\"%s\" => ", len, string);
@@ -294,6 +492,31 @@ void test_decode_string(const char* string, int len) {
 	char decoded_string[decoded_string_length + 1];
 	
 	int ret = Decode(string, len, decoded_string, &decoded_string_length);
+	if (ret==0){
+		printf("failed encoding ...\n");
+		//return;
+	}
+	
+	decoded_string[decoded_string_length] = '\0';
+	printf("[%d]:\"%s\"\n", decoded_string_length, decoded_string);
+	
+	printf("           : ");
+	test_hex_print(string, len);
+	printf(" => ");
+	test_hex_print(decoded_string, decoded_string_length);
+	printf("\n\n");
+	
+	return;
+}
+
+void test_decode_string2(const char* string, int len) {
+	
+	printf(" -> decode : [%d]:\"%s\" => ", len, string);
+	
+	int decoded_string_length = (len*3/4);
+	char decoded_string[decoded_string_length + 1];
+	
+	int ret = Decode2(string, len, decoded_string, &decoded_string_length);
 	if (ret==0){
 		printf("failed encoding ...\n");
 		//return;
@@ -341,6 +564,33 @@ int main (int argc, char *argv[]) {
 		test_encode_string("abcdefghijklmnopqrstuvwxyz\0", 26);
 		test_encode_string("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\0", 52);
 		test_encode_string("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/\0", 64);
+		
+		printf("################################################################################\n");
+		printf("\n");
+		
+	}
+	else if (argc>1 && strcmp(argv[1], "e2")==0) {
+		
+		printf("\n");
+		printf("################################################################################\n");
+		printf("ENCODING2 - test string - output should be \"YWJjZGU=\" ...\n");
+		printf("\n");
+		test_encode_string2("abcde\0", 5);
+		
+		printf("################################################################################\n");
+		printf("ENCODING2 - test effect on shorter strings - output should be shorter than \"YWJjZGU\" ...\n");
+		printf("\n");
+		test_encode_string2("abcd\0", 4);
+		test_encode_string2("abc\0", 3);
+		test_encode_string2("ab\0", 2);
+		test_encode_string2("a\0", 1);
+		
+		printf("################################################################################\n");
+		printf("ENCODING2 - test effect on longer strings - output should be bigger than \"YWJjZGU\" ...\n");
+		printf("\n");
+		test_encode_string2("abcdefghijklmnopqrstuvwxyz\0", 26);
+		test_encode_string2("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\0", 52);
+		test_encode_string2("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/\0", 64);
 		
 		printf("################################################################################\n");
 		printf("\n");
@@ -399,6 +649,51 @@ int main (int argc, char *argv[]) {
 		printf("################################################################################\n");
 		printf("\n");
 		
+	}
+	else if (argc>1 && strcmp(argv[1], "T2")==0) {
+		
+		printf("\n");
+		printf("################################################################################\n");
+		printf("Some Tests2 ...\n");
+		printf("\n");
+		test_encode_string2("487447CDB1B74B618D3EDF9BD1843899\0", 32);
+		test_encode_string2("703DEFE0975F4C85A10C106293B5DFF0\0", 32);
+		
+		const char str2[17] = {0x48, 0x74, 0x47, 0xCD, 0xB1, 0xB7, 0x4B, 0x61, 0x8D, 0x3E, 0xDF, 0x9B, 0xD1, 0x84, 0x38, 0x99, 0x00};
+		test_encode_string2(str2, 16);
+		
+		const char str1[17] = {0x70, 0x3D, 0xEF, 0xE0, 0x97, 0x5F, 0x4C, 0x85, 0xA1, 0x0C, 0x10, 0x62, 0x93, 0xB5, 0xDF, 0xF0, 0x00};
+		test_encode_string2(str1, 16);
+		
+		test_decode_string2("4f7ecbK6Zhzbj3VZbEwyXl==\0", 24);
+		test_decode_string2("7KWOQAFQyExkZ9PPtd7Ftw==\0", 24);
+		
+		const char str3[17] = {0xec, 0xa5, 0x8e, 0x40, 0x01, 0x50, 0xc8, 0x4c, 0x64, 0x67, 0xd3, 0xcf, 0xb5, 0xde, 0xc5, 0xb7, 0x00};
+		test_encode_string2(str3, 16);
+		
+		test_decode_string2("487447CDB1B74B618D3EDF9BD1843899\0", 32);
+		
+		printf("################################################################################\n");
+		printf("\n");
+		
+	}
+	else if (argc>1 && strcmp(argv[1], "T3")==0) {
+	
+		printf("\n");
+		printf("################################################################################\n");
+		printf("Some Tests3 ...\n");
+		printf("\n");
+		
+		const char str1[17] = {0xa9, 0x50, 0x31, 0x6d, 0xc1, 0x05, 0x4e, 0x02, 0x94, 0xc8, 0xe9, 0x48, 0xca, 0x5e, 0x55, 0x04, 0x00};
+		test_encode_string(str1, 16);
+		test_encode_string2(str1, 16);
+
+		test_decode_string("8Ayz56odjTBygBuhWjfrx\0", 21);
+		test_decode_string("8Ayz56odjTBygBuhWjfrx===\0", 24);
+	
+		printf("################################################################################\n");
+		printf("\n");
+	
 	}
 	else if (argc>1 && strcmp(argv[1], "t")==0) {
 		
