@@ -14,11 +14,6 @@ extern base64_encode_func base64_encode_original;
 //extern base64_decode_char_func base64_decode_char_original;
 extern base64_decode_func base64_decode_original;
 
-/*base64_func_set base64_original_func_set {
-	base64_encode_table_original;
-	base64_encode_length_original;
-	base64_encode_original;
-	base64_decode_char_original;
-	base64_decode_original;
-}*/
+extern base64_func_set base64_original_func_set;
+
 #endif // BASE64_FUNCTION_ORIGINAL_H

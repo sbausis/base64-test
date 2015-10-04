@@ -9,7 +9,7 @@ static const char base64_encode_table_original[64] = {
 };
 
 
-int base64_encode_length_original(int aiSrcLen, int aiEncodeFlags) {
+static int GetRequiredEncodeLength(int aiSrcLen, int aiEncodeFlags) {
        int iRet = aiSrcLen * 4 / 3;      // Durch Codierung wachsen Daten um 33%
 
        if ((aiEncodeFlags & DT_BASE64_FLAG_NOPAD) == 0) // Ende des Streams mittels '=' kenzeichnen
@@ -35,7 +35,7 @@ int base64_encode_length_original(int aiSrcLen, int aiEncodeFlags) {
        return iRet;
 }
 
-int base64_encode_original(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCount, int aiEncodeFlags) {
+static int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCount, int aiEncodeFlags) {
 
 	if (!apbySrc) {
 		if (PRINT_DEBUG) printf("no Input ...\n");
@@ -141,7 +141,7 @@ int base64_encode_original(const char* apbySrc, int aiSrcLen, char* apsDest, int
 }
 
 
-int base64_decode_char_original(unsigned int auiChar) {
+static int DecodeChar(unsigned int auiChar) {
 	if (PRINT_DEBUG) printf("char %c ...\n", auiChar);
 	if (auiChar >= 'A' && auiChar <= 'Z') {
 		if (PRINT_DEBUG) printf("ret %02x ...\n", auiChar - 'A' + 0);
@@ -167,7 +167,7 @@ int base64_decode_char_original(unsigned int auiChar) {
 	return -1;
 }
 
-int base64_decode_original(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLen) {
+static int Decode(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLen) {
 	// walk the source buffer
 	// each four character sequence is converted to 3 bytes
 	// CRLFs and =, and any characters not in the encoding table
@@ -232,3 +232,10 @@ int base64_decode_original(const char* apsSrc, int aiSrcMaxCount, char* apbyDest
 	
 	return 1;
 }
+
+base64_func_set base64_fixed_func_set = {
+	GetRequiredEncodeLength,
+	Encode,
+	DecodeChar,
+	Decode
+};
