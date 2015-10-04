@@ -1,22 +1,13 @@
 
-#include <stdio.h>
-#include <string.h>
-#include <stdint.h>
 #include "base64-test.h"
 
 //##############################################################################
 
-static int PRINT_DEBUG = 0;
+int PRINT_DEBUG = 0;
 
 //##############################################################################
 
-enum DT_BASE64_FLAGS {
-	DT_BASE64_FLAG_NONE = 0,
-	DT_BASE64_FLAG_NOPAD = 1,
-	DT_BASE64_FLAG_NOCRLF = 2
-};
-
-static const char gpsBase64EncodingTable[64] = {
+const char gpsBase64EncodingTable[64] = {
        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q',
        'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g',  'h',
        'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y',
@@ -642,6 +633,61 @@ void test_decode_string3(const char* string, int len) {
 
 //##############################################################################
 
+void test_encode_string_function(const char* string, int len, base64_encode_func encode) {
+	
+	printf(" -> encode : [%d]:\"%s\" => ", len, string);
+	
+	int flags = DT_BASE64_FLAG_NONE;
+	
+	int encoded_string_length = GetRequiredEncodeLength(len, flags);
+	char encoded_string[encoded_string_length + 1];
+	
+	int ret = encode(string, len, encoded_string, &encoded_string_length, flags);
+	if (ret==0){
+		printf("failed encoding ...\n");
+		return;
+	}
+	
+	encoded_string[encoded_string_length] = '\0';
+	printf("[%d]:\"%s\"\n", encoded_string_length, encoded_string);
+	
+	printf("           : ");
+	test_hex_print(string, len);
+	printf(" => ");
+	test_hex_print(encoded_string, encoded_string_length);
+	printf("\n\n");
+	
+	return;
+}
+
+void test_encode_string_funcset(const char* string, int len, int flags, base64_func_set funcset) {
+	
+	printf(" -> encode : [%d]:\"%s\" => ", len, string);
+	
+	//int flags = DT_BASE64_FLAG_NONE;
+	
+	int encoded_string_length = funcset.GetRequiredEncodeLength(len, flags);
+	char encoded_string[encoded_string_length + 1];
+	
+	int ret = funcset.Encode(string, len, encoded_string, &encoded_string_length, flags);
+	if (ret==0){
+		printf("failed encoding ...\n");
+		return;
+	}
+	
+	encoded_string[encoded_string_length] = '\0';
+	printf("[%d]:\"%s\"\n", encoded_string_length, encoded_string);
+	
+	printf("           : ");
+	test_hex_print(string, len);
+	printf(" => ");
+	test_hex_print(encoded_string, encoded_string_length);
+	printf("\n\n");
+	
+	return;
+}
+//##############################################################################
+
 int main (int argc, char *argv[]) {
 	
 	if (argc>2 && strcmp(argv[2], "debug")==0) {
@@ -851,6 +897,10 @@ int main (int argc, char *argv[]) {
 		
 	}
 	
+	
+	test_encode_string_function("abcde\0", 5, base64_encode_fixed);
+	test_encode_string_function("abcde\0", 5, base64_encode_original);
+	test_encode_string_funcset("abcde\0", 5, DT_BASE64_FLAG_NONE, base64_fixed_func_set);
 	return 0;
 	
 }
