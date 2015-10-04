@@ -1,15 +1,17 @@
 
 #include "base64-function-original.h"
 
-static const char base64_encode_table_original[64] = {
+//##############################################################################
+
+const char _base64_encode_table_original[64] = {
        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q',
        'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g',  'h',
        'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y',
        'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'
 };
+base64_encode_table base64_encode_table_original = _base64_encode_table_original;
 
-
-static int GetRequiredEncodeLength(int aiSrcLen, int aiEncodeFlags) {
+int base64_encode_length_original(int aiSrcLen, int aiEncodeFlags) {
        int iRet = aiSrcLen * 4 / 3;      // Durch Codierung wachsen Daten um 33%
 
        if ((aiEncodeFlags & DT_BASE64_FLAG_NOPAD) == 0) // Ende des Streams mittels '=' kenzeichnen
@@ -35,7 +37,7 @@ static int GetRequiredEncodeLength(int aiSrcLen, int aiEncodeFlags) {
        return iRet;
 }
 
-static int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCount, int aiEncodeFlags) {
+int base64_encode_original(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDestMaxCount, int aiEncodeFlags) {
 
 	if (!apbySrc) {
 		if (PRINT_DEBUG) printf("no Input ...\n");
@@ -52,7 +54,7 @@ static int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDest
 		return 0;
 	}
 	
-	int requiredLength = base64_encode_length_original(aiSrcLen, aiEncodeFlags);
+	int requiredLength = GetRequiredEncodeLength(aiSrcLen, aiEncodeFlags);
 	if (*apiDestMaxCount < requiredLength) {
 		if (PRINT_DEBUG) printf("output to short - %d < %d ...\n", *apiDestMaxCount, requiredLength);
 		return 0;
@@ -84,7 +86,7 @@ static int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDest
 			}
 			for (int k = 0; k < 4; k++) {	
 				unsigned char b = (unsigned char)(ulCurr >> 26);
-				unsigned char c = base64_encode_table_original[b];
+				unsigned char c = gpsBase64EncodingTable[b];
 				if (PRINT_DEBUG) printf("in - %i => 0x%02x => '%c' ...\n", b, b, b);
 				if (PRINT_DEBUG) printf("out - %i => 0x%02x => '%c' ...\n", c, c, c);
 				*apsDest++ = c;
@@ -121,7 +123,7 @@ static int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDest
 		}
 		for (int k = 0; k < iLen2; k++) {
 			unsigned char b = (unsigned char)(ulCurr >> 26);
-			*apsDest++ = base64_encode_table_original[b];
+			*apsDest++ = gpsBase64EncodingTable[b];
 			ulCurr <<= 6;
 		}
 	
@@ -140,8 +142,7 @@ static int Encode(const char* apbySrc, int aiSrcLen, char* apsDest, int* apiDest
 	return 1;
 }
 
-
-static int DecodeChar(unsigned int auiChar) {
+int base64_decode_char_original(unsigned int auiChar) {
 	if (PRINT_DEBUG) printf("char %c ...\n", auiChar);
 	if (auiChar >= 'A' && auiChar <= 'Z') {
 		if (PRINT_DEBUG) printf("ret %02x ...\n", auiChar - 'A' + 0);
@@ -167,7 +168,7 @@ static int DecodeChar(unsigned int auiChar) {
 	return -1;
 }
 
-static int Decode(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLen) {
+int base64_decode_original(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* apiDestLen) {
 	// walk the source buffer
 	// each four character sequence is converted to 3 bytes
 	// CRLFs and =, and any characters not in the encoding table
@@ -190,7 +191,7 @@ static int Decode(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* ap
 			if (apsSrc >= psSrcEnd) {
 				break;
 			}
-			int iCh = base64_decode_char_original(*apsSrc);
+			int iCh = DecodeChar(*apsSrc);
 			apsSrc++;
 			if (iCh == -1) {
 				// skip this char
@@ -233,9 +234,14 @@ static int Decode(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, int* ap
 	return 1;
 }
 
-base64_func_set base64_fixed_func_set = {
-	GetRequiredEncodeLength,
-	Encode,
-	DecodeChar,
-	Decode
+//##############################################################################
+
+base64_func_set base64_original_func_set = {
+	&base64_encode_table_original,
+	base64_encode_length_original,
+	base64_encode_original,
+	base64_decode_char_original,
+	base64_decode_original
 };
+
+//##############################################################################

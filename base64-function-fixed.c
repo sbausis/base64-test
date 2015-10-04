@@ -1,13 +1,15 @@
 
 #include "base64-function-fixed.h"
 
-static const char base64_encode_table_fixed[64] = {
+//##############################################################################
+
+const char _base64_encode_table_fixed[64] = {
        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q',
        'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g',  'h',
        'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y',
        'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'
 };
-
+base64_encode_table base64_encode_table_fixed = _base64_encode_table_fixed;
 
 int base64_encode_length_fixed(int aiSrcLen, int aiEncodeFlags) {
        int iRet = aiSrcLen * 4 / 3;      // Durch Codierung wachsen Daten um 33%
@@ -52,7 +54,7 @@ int base64_encode_fixed(const char* apbySrc, int aiSrcLen, char* apsDest, int* a
 		return 0;
 	}
 	
-	int requiredLength = base64_encode_length_fixed(aiSrcLen, aiEncodeFlags);
+	int requiredLength = GetRequiredEncodeLength(aiSrcLen, aiEncodeFlags);
 	if (*apiDestMaxCount < requiredLength) {
 		if (PRINT_DEBUG) printf("output to short - %d < %d ...\n", *apiDestMaxCount, requiredLength);
 		return 0;
@@ -84,7 +86,7 @@ int base64_encode_fixed(const char* apbySrc, int aiSrcLen, char* apsDest, int* a
 			}
 			for (int k = 0; k < 4; k++) {	
 				unsigned char b = (unsigned char)((ulCurr >> 26)&0x3F);
-				unsigned char c = base64_encode_table_fixed[b];
+				unsigned char c = gpsBase64EncodingTable[b];
 				if (PRINT_DEBUG) printf("in - %i => 0x%02x => '%c' ...\n", b, b, b);
 				if (PRINT_DEBUG) printf("out - %i => 0x%02x => '%c' ...\n", c, c, c);
 				*apsDest++ = c;
@@ -122,7 +124,7 @@ int base64_encode_fixed(const char* apbySrc, int aiSrcLen, char* apsDest, int* a
 		}
 		for (int k = 0; k < iLen2; k++) {
 			unsigned char b = (unsigned char)((ulCurr >> 26)&0x3F);
-			unsigned char c = base64_encode_table_fixed[b];
+			unsigned char c = gpsBase64EncodingTable[b];
 			if (PRINT_DEBUG) printf("in - %i => 0x%02x => '%c' ...\n", b, b, b);
 			if (PRINT_DEBUG) printf("out - %i => 0x%02x => '%c' ...\n", c, c, c);
 			*apsDest++ = c;
@@ -146,7 +148,6 @@ int base64_encode_fixed(const char* apbySrc, int aiSrcLen, char* apsDest, int* a
 	*apiDestMaxCount = iWritten;
 	return 1;
 }
-
 
 int base64_decode_char_fixed(unsigned int auiChar) {
 	if (PRINT_DEBUG) printf("char %c ...\n", auiChar);
@@ -198,7 +199,7 @@ int base64_decode_fixed(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, i
 				break;
 			}
 			if (PRINT_DEBUG) printf("in - %02x ...\n", *apsSrc);
-			int iCh = base64_decode_char_fixed(*apsSrc);
+			int iCh = DecodeChar(*apsSrc);
 			if (PRINT_DEBUG) printf("out - %02x ...\n", iCh);
 			apsSrc++;
 			if (iCh == -1) {
@@ -246,8 +247,14 @@ int base64_decode_fixed(const char* apsSrc, int aiSrcMaxCount, char* apbyDest, i
 	return 1;
 }
 
+//##############################################################################
+
 base64_func_set base64_fixed_func_set = {
+	&base64_encode_table_fixed,
 	base64_encode_length_fixed,
 	base64_encode_fixed,
+	base64_decode_char_fixed,
 	base64_decode_fixed
 };
+
+//##############################################################################
